@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Patch,
   Param,
@@ -12,8 +13,9 @@ import {
   DefaultValuePipe,
 } from '@nestjs/common';
 import { EventsService } from './events.service';
-import { CreateEventDto } from './dto/create-event.dto';
-import { UpdateEventDto } from './dto/update-event.dto';
+import { CreateEventDto, UpdateEventDto, BulkCreateEventsDto, EventQueryDto } from './dto/event.dto';
+import { CreateEventDto as CreateEventDtoSimple } from './dto/create-event.dto';
+import { UpdateEventDto as UpdateEventDtoSimple } from './dto/update-event.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/user.decorator';
 import { User } from '../users/entities/user.entity';
@@ -24,9 +26,10 @@ import { plainToInstance } from 'class-transformer';
 export class EventsController {
   constructor(private readonly eventsService: EventsService) {}
 
+  // Traditional REST endpoints (using @CurrentUser decorator)
   @Post()
   @UseGuards(JwtAuthGuard)
-  async create(@Body() createEventDto: CreateEventDto, @CurrentUser() user: User): Promise<EventResponseDto> {
+  async create(@Body() createEventDto: CreateEventDtoSimple, @CurrentUser() user: User): Promise<EventResponseDto> {
     const event = await this.eventsService.create(createEventDto, user);
     return plainToInstance(EventResponseDto, event);
   }
@@ -55,7 +58,7 @@ export class EventsController {
   @UseGuards(JwtAuthGuard)
   async update(
     @Param('id') id: string,
-    @Body() updateEventDto: UpdateEventDto,
+    @Body() updateEventDto: UpdateEventDtoSimple,
     @CurrentUser() user: User,
   ): Promise<EventResponseDto> {
     const event = await this.eventsService.update(id, updateEventDto, user);
@@ -67,5 +70,48 @@ export class EventsController {
   async remove(@Param('id') id: string, @CurrentUser() user: User): Promise<{ message: string }> {
     await this.eventsService.remove(id, user);
     return { message: 'Event deleted successfully' };
+  }
+
+  // CQRS-based endpoints (using query parameters)
+  @Post('cqrs')
+  @UseGuards(JwtAuthGuard)
+  async createEvent(@Body() dto: CreateEventDto, @Query('userId') userId: string, @Query('userName') userName?: string) {
+    return await this.eventsService.createEvent(dto, userId, userName);
+  }
+
+  @Put('cqrs/:id')
+  @UseGuards(JwtAuthGuard)
+  async updateEvent(@Param('id') id: string, @Body() dto: UpdateEventDto, @Query('userId') userId: string, @Query('userName') userName?: string) {
+    return await this.eventsService.updateEvent(id, dto, userId, userName);
+  }
+
+  @Delete('cqrs/:id')
+  @UseGuards(JwtAuthGuard)
+  async deleteEvent(@Param('id') id: string, @Query('userId') userId: string, @Query('userName') userName?: string) {
+    return await this.eventsService.deleteEvent(id, userId, userName);
+  }
+
+  @Post('bulk')
+  @UseGuards(JwtAuthGuard)
+  async bulkCreateEvents(@Body() dto: BulkCreateEventsDto, @Query('userId') userId: string, @Query('userName') userName?: string) {
+    return await this.eventsService.bulkCreateEvents(dto, userId, userName);
+  }
+
+  @Get('cqrs/:id')
+  @UseGuards(JwtAuthGuard)
+  async getEventById(@Param('id') id: string) {
+    return await this.eventsService.getEventById(id);
+  }
+
+  @Get('cqrs')
+  @UseGuards(JwtAuthGuard)
+  async getEvents(@Query() query: EventQueryDto) {
+    return await this.eventsService.getEvents(query);
+  }
+
+  @Get('organizer/:organizerId')
+  @UseGuards(JwtAuthGuard)
+  async getEventsByOrganizer(@Param('organizerId') organizerId: string, @Query() query: EventQueryDto) {
+    return await this.eventsService.getEventsByOrganizer(organizerId, query);
   }
 }
