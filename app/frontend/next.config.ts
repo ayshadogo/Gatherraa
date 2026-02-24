@@ -1,6 +1,5 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   // Image optimization
   images: {
     formats: ['image/webp', 'image/avif'],
@@ -20,21 +19,15 @@ const nextConfig: NextConfig = {
   
   // Compression
   compress: true,
-  
-  // Bundle analyzer (enabled via ANALYZE env var)
-  ...(process.env.ANALYZE === 'true' && {
-    webpack: (config: any) => {
-      const { BundleAnalyzerPlugin } = require('@next/bundle-analyzer');
-      config.plugins.push(
-        new BundleAnalyzerPlugin({
-          analyzerMode: 'server',
-          analyzerPort: 8888,
-          openAnalyzer: true,
-        })
-      );
-      return config;
-    },
-  }),
 };
 
-export default nextConfig;
+// Bundle analyzer (enabled via ANALYZE env var)
+if (process.env.ANALYZE === 'true') {
+  const withBundleAnalyzer = require('@next/bundle-analyzer')({
+    enabled: true,
+    openAnalyzer: true,
+  });
+  module.exports = withBundleAnalyzer(nextConfig);
+} else {
+  module.exports = nextConfig;
+}
