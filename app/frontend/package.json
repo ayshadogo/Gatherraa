@@ -17,6 +17,8 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "dexie": "^4.0.10",
+    "dexie-react-hooks": "^1.1.7",
     "ethers": "^6.16.0",
     "lucide-react": "^0.469.0",
     "next": "16.1.6",
@@ -24,6 +26,7 @@
     "react-dom": "19.2.3",
     "react-hook-form": "^7.71.1",
     "recharts": "^2.12.7",
+    "uuid": "^11.0.5",
     "zod": "^4.3.6"
   },
   "devDependencies": {
