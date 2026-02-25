@@ -180,6 +180,54 @@ body {
   outline-offset: var(--focus-outline-offset);
 }
 
+@keyframes video-grid-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes recommendation-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes recommendation-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.animate-recommendation-enter {
+  animation: recommendation-enter 260ms ease-out both;
+}
+
+.animate-recommendation-exit {
+  animation: recommendation-exit 220ms ease-in forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-recommendation-enter,
+  .animate-recommendation-exit {
+    animation: none !important;
+  }
+}
+
 @keyframes button-ripple {
   from {
     transform: scale(0);
