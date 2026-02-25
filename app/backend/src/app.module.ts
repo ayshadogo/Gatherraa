@@ -24,7 +24,6 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { CouponsModule } from './coupons/coupons.module';
 import { MigrationsModule } from './migrations/migrations.module';
 
-
 @Module({
   imports: [
     ConfigModule.forRoot({
