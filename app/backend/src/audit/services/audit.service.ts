@@ -4,7 +4,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AuditLog, AuditAction } from '../entities/audit-log.entity';
+import { AuditLog } from '../entities/audit-log.entity';
+import { AuditAction } from '../constants/audit.constants';
 import * as crypto from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 
