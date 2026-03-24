@@ -87,6 +87,18 @@ pub fn read_total_shares(env: &Env) -> i128 {
         .unwrap_or(0)
 }
 
-pub fn write_total_shares(env: &Env, val: i128) {
-    env.storage().instance().set(&DataKey::TotalShares, &val);
+pub fn write_total_shares(env: &Env, shares: i128) {
+    env.storage().instance().set(&DataKey::TotalShares, &shares);
+}
+
+pub fn has_role(env: &Env, role: Symbol, address: Address) -> bool {
+    env.storage().persistent().has(&DataKey::Role(role, address))
+}
+
+pub fn write_role(env: &Env, role: Symbol, address: Address) {
+    env.storage().persistent().set(&DataKey::Role(role, address), &true);
+}
+
+pub fn remove_role(env: &Env, role: Symbol, address: Address) {
+    env.storage().persistent().remove(&DataKey::Role(role, address));
 }
