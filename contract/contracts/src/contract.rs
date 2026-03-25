@@ -1,12 +1,14 @@
 use soroban_sdk::{contract, contractimpl, token, Address, BytesN, Env, Symbol};
 
-use crate::storage::*;
+use crate::storage::{StorageCache, *};
 use crate::types::{Config, DataKey, Tier, UserInfo};
 
 #[contract]
 pub struct StakingContract;
 
 const PRECISION: i128 = 1_000_000_000;
+const ADMIN_ROLE: Symbol = symbol_short!("ADMIN");
+const MOD_ROLE: Symbol = symbol_short!("MOD");
 
 /// Reentrancy guard key
 const REENTRANCY_GUARD: Symbol = symbol_short!("reentrant");
@@ -39,6 +41,10 @@ impl StakingContract {
         write_config(&env, &config);
         write_last_update_time(&env, env.ledger().timestamp());
         env.storage().instance().set(&DataKey::Version, &1u32);
+
+        // Grant initial admin role
+        write_role(&env, ADMIN_ROLE, admin);
+
         extend_instance(&env);
 
         // Emit event
@@ -48,9 +54,11 @@ impl StakingContract {
         );
     }
 
-    pub fn set_tier(env: Env, tier_id: u32, min_amount: i128, reward_multiplier: u32) {
-        let config = read_config(&env);
-        config.admin.require_auth();
+    pub fn set_tier(env: Env, admin: Address, tier_id: u32, min_amount: i128, reward_multiplier: u32) {
+        admin.require_auth();
+        if !has_role(&env, ADMIN_ROLE, admin) {
+            panic!("not authorized");
+        }
 
         let tier = Tier {
             min_amount,
@@ -81,7 +89,15 @@ impl StakingContract {
 
         update_reward(&env, Some(&user));
 
-        let config = read_config(&env);
+        // Use StorageCache for efficient storage access
+        let mut cache = StorageCache::new();
+        let config = cache.get_config(&env).clone();
+        let tier = read_tier(&env, tier_id).unwrap_or(Tier {
+            min_amount: 0,
+            reward_multiplier: 100,
+        });
+        let mut total_shares = cache.get_total_shares(&env);
+        let reward_per_token_stored = cache.get_reward_per_token_stored(&env);
 
         // Transfer staking tokens from user to contract with error handling
         let token_client = token::Client::new(&env, &config.staking_token);
@@ -101,7 +117,7 @@ impl StakingContract {
         let mut user_info = read_user_info(&env, &user).unwrap_or(UserInfo {
             amount: 0,
             shares: 0,
-            reward_per_token_paid: read_reward_per_token_stored(&env),
+            reward_per_token_paid: reward_per_token_stored,
             rewards: 0,
             lock_start_time: 0,
             lock_duration: 0,
@@ -111,11 +127,7 @@ impl StakingContract {
         // Update amount
         user_info.amount += amount;
 
-        // Verify tier
-        let tier = read_tier(&env, tier_id).unwrap_or(Tier {
-            min_amount: 0,
-            reward_multiplier: 100,
-        });
+        // Verify tier (using cached tier)
         if user_info.amount < tier.min_amount {
             env.storage().instance().remove(&REENTRANCY_GUARD);
             panic!("insufficient amount for tier");
@@ -138,6 +150,9 @@ impl StakingContract {
 
         write_user_info(&env, &user, &user_info);
 
+        // Update cached total_shares and write once
+        total_shares += diff_shares;
+        cache.set_total_shares(total_shares);
         write_total_shares(&env, total_shares);
 
         env.storage().instance().remove(&REENTRANCY_GUARD);
@@ -160,6 +175,10 @@ impl StakingContract {
         user.require_auth();
         update_reward(&env, Some(&user));
 
+        // Cache frequently accessed storage values
+        let config = read_config(&env);
+        let mut total_shares = read_total_shares(&env);
+
         let mut user_info = read_user_info(&env, &user).expect("user not found");
         let reward = user_info.rewards;
 
@@ -167,7 +186,6 @@ impl StakingContract {
             user_info.rewards = 0;
             write_user_info(&env, &user, &user_info);
 
-            let config = read_config(&env);
             let reward_token = token::Client::new(&env, &config.reward_token);
 
             if compound {
@@ -179,6 +197,7 @@ impl StakingContract {
                 }
 
                 // Keep the reward in contract, just update shares and total shares
+                // Cache tier read
                 let tier = read_tier(&env, user_info.tier_id).unwrap_or(Tier {
                     min_amount: 0,
                     reward_multiplier: 100,
@@ -193,7 +212,7 @@ impl StakingContract {
                 user_info.shares = new_shares;
                 write_user_info(&env, &user, &user_info);
 
-                let mut total_shares = read_total_shares(&env);
+                // Update cached total_shares and write once
                 total_shares += diff_shares;
                 write_total_shares(&env, total_shares);
             } else {
@@ -235,6 +254,10 @@ impl StakingContract {
 
         update_reward(&env, Some(&user));
 
+        // Cache frequently accessed storage values
+        let config = read_config(&env);
+        let mut total_shares = read_total_shares(&env);
+
         let mut user_info = read_user_info(&env, &user).expect("user not found");
         if user_info.amount < amount {
             env.storage().instance().remove(&REENTRANCY_GUARD);
@@ -252,12 +275,9 @@ impl StakingContract {
             // Penalty remains in contract or burned, here we just don't send it to the user.
         }
 
-        let config = read_config(&env);
-
         user_info.amount -= amount;
 
-        // Re-calculate shares
-        // If they drop below tier min, should degrade tier? For simplicity, keep tier multiplier on remaining or fail if below min.
+        // Cache tier reads to avoid redundant storage access
         let tier = read_tier(&env, user_info.tier_id).unwrap_or(Tier {
             min_amount: 0,
             reward_multiplier: 100,
@@ -280,7 +300,7 @@ impl StakingContract {
 
         write_user_info(&env, &user, &user_info);
 
-        let mut total_shares = read_total_shares(&env);
+        // Update cached total_shares and write once
         total_shares -= diff_shares;
         write_total_shares(&env, total_shares);
 
@@ -306,11 +326,16 @@ impl StakingContract {
         );
     }
 
-    pub fn slash(env: Env, user: Address, amount: i128) {
-        let config = read_config(&env);
-        config.admin.require_auth();
+    pub fn slash(env: Env, admin: Address, user: Address, amount: i128) {
+        admin.require_auth();
+        if !has_role(&env, ADMIN_ROLE, admin) {
+            panic!("not authorized");
+        }
 
         update_reward(&env, Some(&user));
+
+        // Cache frequently accessed storage values
+        let mut total_shares = read_total_shares(&env);
 
         let mut user_info = read_user_info(&env, &user).expect("user not found");
         if user_info.amount < amount {
@@ -319,6 +344,7 @@ impl StakingContract {
 
         user_info.amount -= amount;
 
+        // Cache tier reads to avoid redundant storage access
         let tier = read_tier(&env, user_info.tier_id).unwrap_or(Tier {
             min_amount: 0,
             reward_multiplier: 100,
@@ -340,7 +366,7 @@ impl StakingContract {
 
         write_user_info(&env, &user, &user_info);
 
-        let mut total_shares = read_total_shares(&env);
+        // Update cached total_shares and write once
         total_shares -= diff_shares;
         write_total_shares(&env, total_shares);
 
@@ -397,9 +423,11 @@ impl StakingContract {
 
     // --- UPGRADEABILITY MECHANISMS ---
     // Schedule an upgrade with a timelock (e.g., 24 hours).
-    pub fn schedule_upgrade(env: Env, new_wasm_hash: BytesN<32>, unlock_time: u64) {
-        let config = read_config(&env);
-        config.admin.require_auth();
+    pub fn schedule_upgrade(env: Env, admin: Address, new_wasm_hash: BytesN<32>, unlock_time: u64) {
+        admin.require_auth();
+        if !has_role(&env, ADMIN_ROLE, admin) {
+            panic!("not authorized");
+        }
 
         if env.ledger().timestamp() >= unlock_time {
             panic!("unlock_time must be in the future");
@@ -418,9 +446,11 @@ impl StakingContract {
     }
 
     // Cancel a scheduled upgrade. (Rollback mechanism before execution)
-    pub fn cancel_upgrade(env: Env) {
-        let config = read_config(&env);
-        config.admin.require_auth();
+    pub fn cancel_upgrade(env: Env, admin: Address) {
+        admin.require_auth();
+        if !has_role(&env, ADMIN_ROLE, admin) {
+            panic!("not authorized");
+        }
 
         env.storage().instance().remove(&DataKey::UpgradeTimelock);
         env.events()
@@ -429,9 +459,11 @@ impl StakingContract {
     }
 
     // Execute the scheduled upgrade.
-    pub fn execute_upgrade(env: Env, new_wasm_hash: BytesN<32>) {
-        let config = read_config(&env);
-        config.admin.require_auth();
+    pub fn execute_upgrade(env: Env, admin: Address, new_wasm_hash: BytesN<32>) {
+        admin.require_auth();
+        if !has_role(&env, ADMIN_ROLE, admin) {
+            panic!("not authorized");
+        }
 
         let (scheduled_hash, unlock_time): (BytesN<32>, u64) = env
             .storage()
@@ -458,9 +490,11 @@ impl StakingContract {
     }
 
     // Execute a state migration after an upgrade.
-    pub fn migrate_state(env: Env, new_version: u32) {
-        let config = read_config(&env);
-        config.admin.require_auth();
+    pub fn migrate_state(env: Env, admin: Address, new_version: u32) {
+        admin.require_auth();
+        if !has_role(&env, ADMIN_ROLE, admin) {
+            panic!("not authorized");
+        }
 
         let current_version: u32 = env.storage().instance().get(&DataKey::Version).unwrap_or(1);
         if new_version <= current_version {
@@ -483,6 +517,27 @@ impl StakingContract {
     // Get current contract version
     pub fn version(env: Env) -> u32 {
         env.storage().instance().get(&DataKey::Version).unwrap_or(1)
+    }
+
+    // Role Management
+    pub fn grant_role(env: Env, admin: Address, role: Symbol, address: Address) {
+        admin.require_auth();
+        if !has_role(&env, ADMIN_ROLE, admin) {
+            panic!("not authorized");
+        }
+        write_role(&env, role, address);
+    }
+
+    pub fn revoke_role(env: Env, admin: Address, role: Symbol, address: Address) {
+        admin.require_auth();
+        if !has_role(&env, ADMIN_ROLE, admin) {
+            panic!("not authorized");
+        }
+        remove_role(&env, role, address);
+    }
+
+    pub fn has_role(env: Env, role: Symbol, address: Address) -> bool {
+        has_role(&env, role, address)
     }
 }
 

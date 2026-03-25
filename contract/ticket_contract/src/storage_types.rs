@@ -28,6 +28,7 @@ pub enum DataKey {
     EntropyProviders(Symbol), // List of providers for a tier
     VRFPublicKey, // Public key for verifying off-chain VRF proofs
     VRFProof(Symbol), // Latest verified VRF proof for a tier
+    Role(Symbol, Address),
 }
 
 #[contracttype]
