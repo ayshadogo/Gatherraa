@@ -9,6 +9,9 @@
 #[cfg(test)]
 mod test;
 
+#[cfg(test)]
+mod test_gas;
+
 mod storage_types;
 use storage_types::{DataKey, Escrow, EscrowStatus, RevenueSplit, Milestone, Dispute, 
                    DisputeResolution, ReferralTracker, RevenueSplitConfig, EscrowError};

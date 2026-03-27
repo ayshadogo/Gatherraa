@@ -8,6 +8,7 @@
 
 pub mod access;
 pub mod error;
+pub mod gas_testing;
 pub mod reentrancy;
 pub mod storage;
 pub mod types;
@@ -16,6 +17,7 @@ pub mod validation;
 
 pub use access::*;
 pub use error::*;
+pub use gas_testing::*;
 pub use reentrancy::*;
 pub use storage::*;
 pub use types::*;

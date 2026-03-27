@@ -9,6 +9,9 @@
 #[cfg(test)]
 mod test;
 
+#[cfg(test)]
+mod test_gas;
+
 use soroban_sdk::{
     contract, contractimpl, symbol_short, token, Address, Bytes, BytesN, Env, String, Symbol, Vec,
 };
