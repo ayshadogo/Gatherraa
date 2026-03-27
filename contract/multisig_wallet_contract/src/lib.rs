@@ -8,6 +8,8 @@
 
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod security_tests;
 
 mod storage_types;
 use storage_types::{DataKey, WalletConfig, Signer, Role, Transaction, TransactionStatus, 

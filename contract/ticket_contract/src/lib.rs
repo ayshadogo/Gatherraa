@@ -8,6 +8,8 @@
 
 #[cfg(test)]
 mod test;
+#[cfg(test)]
+mod security_tests;
 
 use soroban_sdk::{
     contract, contractimpl, symbol_short, token, Address, Bytes, BytesN, Env, String, Symbol, Vec,
