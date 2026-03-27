@@ -502,6 +502,37 @@ impl StakingContract {
     pub fn has_role(env: Env, role: Symbol, address: Address) -> bool {
         has_role(&env, role, address)
     }
+
+    pub fn user_info(env: Env, user: Address) -> UserInfo {
+        read_user_info(&env, &user).unwrap_or(UserInfo {
+            amount: 0,
+            shares: 0,
+            reward_per_token_paid: 0,
+            rewards: 0,
+            lock_start_time: 0,
+            lock_duration: 0,
+            tier_id: 0,
+        })
+    }
+
+    pub fn tier_info(env: Env, tier_id: u32) -> Tier {
+        read_tier(&env, tier_id).unwrap_or(Tier {
+            min_amount: 0,
+            reward_multiplier: 100,
+        })
+    }
+
+    pub fn total_shares(env: Env) -> i128 {
+        read_total_shares(&env)
+    }
+
+    pub fn reward_per_token_stored(env: Env) -> i128 {
+        read_reward_per_token_stored(&env)
+    }
+
+    pub fn config(env: Env) -> Config {
+        read_config(&env)
+    }
 }
 
 fn update_reward(env: &Env, user: Option<&Address>) {
